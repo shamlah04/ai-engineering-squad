@@ -1,6 +1,8 @@
 import type {
   ProductAnalystAssignment,
   ProductAnalystResult,
+  SolutionArchitectAssignment,
+  SolutionArchitectResult,
 } from '../../domain/agents.js';
 import type { BlockingQuestion } from '../../domain/workflow.js';
 import type { AgentRunner } from '../../ports/agent-runner.js';
@@ -97,6 +99,46 @@ export class DeterministicProductAnalyst implements AgentRunner {
               normalizedRequirements: `${input.objective.trim()}\n\n${input.technicalContext.trim()}`,
             }
           : {}),
+      },
+    });
+  }
+
+  public runSolutionArchitect(
+    assignment: SolutionArchitectAssignment,
+  ): Promise<SolutionArchitectResult> {
+    const change = assignment.input.requestedChanges?.trim();
+    return Promise.resolve({
+      assignmentId: assignment.assignmentId,
+      taskId: assignment.taskId,
+      agentRole: 'solution_architect',
+      contractVersion: '1.0',
+      status: 'completed',
+      summary: change
+        ? `Plan revised: ${change}`
+        : 'Implementation plan prepared.',
+      assumptions: ['Single-process MVP execution.'],
+      risks: ['In-memory state is not durable.'],
+      evidenceReferences: assignment.input.acceptanceCriteria.map(
+        ({ id }) => id,
+      ),
+      requestedNextAction: 'request_plan_approval',
+      output: {
+        summary: change
+          ? `Revised plan incorporating: ${change}`
+          : 'Implement a tested provider-neutral vertical slice.',
+        steps: [
+          'Extend typed contracts.',
+          'Implement through ports.',
+          'Validate acceptance criteria.',
+        ],
+        affectedComponents: ['domain', 'application', 'adapters', 'tests'],
+        risks: ['In-memory state is lost on process exit.'],
+        assumptions: ['One local human operator.'],
+        dependencies: [],
+        testStrategy: ['Unit-test rules.', 'Integration-test the workflow.'],
+        rollbackConsiderations: [
+          'Revert local changes; no external system is modified.',
+        ],
       },
     });
   }

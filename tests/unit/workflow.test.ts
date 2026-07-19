@@ -15,6 +15,7 @@ describe('workflow transitions', () => {
     blockingDependencies: [],
     contradictions: [],
     clarifications: [],
+    plans: [],
     state: 'created' as const,
     version: 1,
     createdAt: 'now',

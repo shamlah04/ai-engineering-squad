@@ -3,6 +3,9 @@ export type WorkflowState =
   | 'analyzing_requirements'
   | 'waiting_for_clarification'
   | 'requirements_ready'
+  | 'planning'
+  | 'waiting_for_plan_approval'
+  | 'plan_approved'
   | 'failed';
 
 export interface AcceptanceCriterion {
@@ -38,6 +41,28 @@ export interface ReadinessAssessment {
   readonly normalizedRequirements?: string;
 }
 
+export interface ImplementationPlan {
+  readonly version: number;
+  readonly summary: string;
+  readonly steps: readonly string[];
+  readonly affectedComponents: readonly string[];
+  readonly risks: readonly string[];
+  readonly assumptions: readonly string[];
+  readonly dependencies: readonly string[];
+  readonly testStrategy: readonly string[];
+  readonly rollbackConsiderations: readonly string[];
+  readonly createdAt: string;
+}
+
+export interface PlanApproval {
+  readonly decision: 'approved' | 'rejected';
+  readonly planVersion: number;
+  readonly actorId: string;
+  readonly justification: string;
+  readonly timestamp: string;
+  readonly approvalReference: string;
+}
+
 export interface EngineeringTask {
   readonly id: string;
   readonly title: string;
@@ -57,6 +82,8 @@ export interface EngineeringTask {
     readonly actorId: string;
     readonly timestamp: string;
   };
+  readonly plans: readonly ImplementationPlan[];
+  readonly planApproval?: PlanApproval;
 }
 
 const transitions: Readonly<Record<WorkflowState, readonly WorkflowState[]>> = {
@@ -71,7 +98,10 @@ const transitions: Readonly<Record<WorkflowState, readonly WorkflowState[]>> = {
     'requirements_ready',
     'failed',
   ],
-  requirements_ready: ['failed'],
+  requirements_ready: ['planning', 'failed'],
+  planning: ['waiting_for_plan_approval', 'failed'],
+  waiting_for_plan_approval: ['planning', 'plan_approved', 'failed'],
+  plan_approved: ['failed'],
   failed: [],
 };
 

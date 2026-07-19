@@ -75,6 +75,8 @@ Implementation note: delivered as an application-service boundary with strict wo
 
 ### Slice 2 — Provider-neutral Product Analyst
 
+**Status: Complete (2026-07-19).**
+
 **User outcome:** An operator may configure a real AI provider for requirement analysis while retaining the same workflow behavior and deterministic fallback tests.
 
 Work:
@@ -91,6 +93,8 @@ Acceptance:
 - Malformed output cannot transition workflow state.
 - Provider failure is recorded and produces a recoverable, explicit workflow outcome.
 - Tests and local development still work with no provider credentials.
+
+Implementation note: the provider-neutral `AgentRunner` now includes a versioned Solution Architect contract and deterministic adapter. Plans are versioned, contain the required risks, assumptions, dependencies, components, test strategy, and rollback considerations, and cannot advance until an explicit audited human approval. Rejection and requested-change paths are deterministic.
 
 ### Slice 3 — Architecture proposal
 

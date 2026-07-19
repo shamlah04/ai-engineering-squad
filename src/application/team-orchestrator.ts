@@ -1,4 +1,7 @@
-import type { ProductAnalystAssignment } from '../domain/agents.js';
+import type {
+  ProductAnalystAssignment,
+  SolutionArchitectAssignment,
+} from '../domain/agents.js';
 import { redactSecrets } from '../domain/audit.js';
 import {
   type AcceptanceCriterion,
@@ -54,6 +57,7 @@ export class TeamOrchestrator {
       blockingDependencies: [...(input.blockingDependencies ?? [])],
       contradictions: [...(input.contradictions ?? [])],
       clarifications: [],
+      plans: [],
       state: 'created',
       version: 1,
       createdAt: timestamp,
@@ -158,6 +162,142 @@ export class TeamOrchestrator {
 
   public async getTask(taskId: string): Promise<EngineeringTask> {
     return this.requireTask(taskId);
+  }
+
+  public async createPlan(
+    taskId: string,
+    expectedVersion: number,
+    requestedChanges?: string,
+  ): Promise<EngineeringTask> {
+    const existing = await this.requireTask(taskId);
+    if (existing.version !== expectedVersion)
+      throw new Error('Stale workflow version.');
+    if (
+      existing.state !== 'requirements_ready' &&
+      existing.state !== 'waiting_for_plan_approval'
+    )
+      throw new Error('Task is not ready for planning.');
+    const planning = transitionTask(existing, 'planning', this.clock.now());
+    await this.workflows.save(planning, existing.version);
+    await this.record(
+      planning,
+      'orchestrator',
+      'team-orchestrator',
+      'workflow.transitioned',
+      existing.state,
+      planning.state,
+    );
+    const prior = existing.plans.at(-1);
+    const assignment: SolutionArchitectAssignment = {
+      assignmentId: this.ids.next('assignment'),
+      taskId,
+      agentRole: 'solution_architect',
+      contractVersion: '1.0',
+      input: {
+        objective: existing.objective,
+        technicalContext: existing.technicalContext,
+        acceptanceCriteria: existing.acceptanceCriteria,
+        ...(prior ? { priorPlanVersion: prior.version } : {}),
+        ...(requestedChanges?.trim()
+          ? { requestedChanges: requestedChanges.trim() }
+          : {}),
+      },
+    };
+    await this.record(
+      planning,
+      'orchestrator',
+      'team-orchestrator',
+      'specialist.assignment_created',
+      assignment.assignmentId,
+      assignment.agentRole,
+    );
+    const result = await this.agents.runSolutionArchitect(assignment);
+    await this.record(
+      planning,
+      'specialist',
+      'solution-architect',
+      'specialist.result_received',
+      result.summary,
+      result.requestedNextAction,
+    );
+    const timestamp = this.clock.now();
+    const waiting = transitionTask(
+      {
+        ...planning,
+        plans: [
+          ...planning.plans,
+          {
+            version: (prior?.version ?? 0) + 1,
+            ...result.output,
+            createdAt: timestamp,
+          },
+        ],
+      },
+      'waiting_for_plan_approval',
+      timestamp,
+    );
+    await this.workflows.save(waiting, planning.version);
+    await this.record(
+      waiting,
+      'orchestrator',
+      'team-orchestrator',
+      'plan.approval_requested',
+      `Plan version ${waiting.plans.at(-1)?.version ?? 0}`,
+      waiting.state,
+    );
+    return waiting;
+  }
+
+  public async decidePlan(
+    taskId: string,
+    expectedVersion: number,
+    actorId: string,
+    decision: 'approved' | 'rejected' | 'changes_requested',
+    justification: string,
+  ): Promise<EngineeringTask> {
+    const existing = await this.requireTask(taskId);
+    if (existing.version !== expectedVersion)
+      throw new Error('Stale workflow version.');
+    if (existing.state !== 'waiting_for_plan_approval' || !justification.trim())
+      throw new Error('A pending plan and justification are required.');
+    if (decision === 'changes_requested') {
+      await this.record(
+        existing,
+        'human',
+        actorId,
+        'plan.changes_requested',
+        justification,
+        'Plan revision requested',
+      );
+      return this.createPlan(taskId, expectedVersion, justification);
+    }
+    const plan = existing.plans.at(-1);
+    if (!plan) throw new Error('No plan exists.');
+    const timestamp = this.clock.now();
+    const approvalReference = this.ids.next('approval');
+    const nextState = decision === 'approved' ? 'plan_approved' : 'failed';
+    const decided: EngineeringTask = {
+      ...transitionTask(existing, nextState, timestamp),
+      planApproval: {
+        decision,
+        planVersion: plan.version,
+        actorId,
+        justification: justification.trim(),
+        timestamp,
+        approvalReference,
+      },
+    };
+    await this.workflows.save(decided, existing.version);
+    await this.record(
+      decided,
+      'human',
+      actorId,
+      `plan.${decision}`,
+      justification,
+      nextState,
+      approvalReference,
+    );
+    return decided;
   }
 
   public async getAudit(taskId: string) {

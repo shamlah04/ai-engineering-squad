@@ -49,3 +49,28 @@ export interface ProductAnalystResult extends AgentResultBase {
   readonly agentRole: 'product_analyst';
   readonly output: ReadinessAssessment;
 }
+
+export interface SolutionArchitectAssignment extends AgentAssignmentBase {
+  readonly agentRole: 'solution_architect';
+  readonly input: {
+    readonly objective: string;
+    readonly technicalContext: string;
+    readonly acceptanceCriteria: readonly AcceptanceCriterion[];
+    readonly priorPlanVersion?: number;
+    readonly requestedChanges?: string;
+  };
+}
+
+export interface SolutionArchitectResult extends AgentResultBase {
+  readonly agentRole: 'solution_architect';
+  readonly output: {
+    readonly summary: string;
+    readonly steps: readonly string[];
+    readonly affectedComponents: readonly string[];
+    readonly risks: readonly string[];
+    readonly assumptions: readonly string[];
+    readonly dependencies: readonly string[];
+    readonly testStrategy: readonly string[];
+    readonly rollbackConsiderations: readonly string[];
+  };
+}
