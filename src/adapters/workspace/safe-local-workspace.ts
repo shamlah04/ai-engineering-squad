@@ -4,23 +4,25 @@ import { relative, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
 
 import { redactSecrets } from '../../domain/audit.js';
+import type { RepositoryTrust } from '../../domain/execution-policy.js';
 import type {
   CommandRequest,
   CommandResult,
   RepositoryInspection,
   RepositoryWorkspace,
+  WorkspaceChange,
 } from '../../ports/repository-workspace.js';
 
 const execFileAsync = promisify(execFile);
-const allowedCommands = new Set(['git', 'npm', 'node', 'npx']);
-const destructiveTokens = new Set([
-  'clean',
-  'deploy',
-  'merge',
-  'publish',
-  'push',
-  'reset',
-  'rm',
+const allowedPatterns = new Set([
+  'npm\0test',
+  'npm\0run\0build',
+  'npm\0run\0format:check',
+  'npm\0run\0lint',
+  'npm\0run\0typecheck',
+  'git\0diff\0--name-only',
+  'git\0diff\0--stat',
+  'git\0status\0--porcelain=v1',
 ]);
 
 export class UnsafeCommandError extends Error {
@@ -40,15 +42,18 @@ export class SafeLocalWorkspace implements RepositoryWorkspace {
       readonly maxOutputBytes?: number;
       readonly maxTimeoutMs?: number;
       readonly onToolAction?: (result: CommandResult) => Promise<void>;
+      readonly repositoryTrust?: RepositoryTrust;
     } = {},
   ) {
     this.#maxOutputBytes = options.maxOutputBytes ?? 64_000;
     this.#maxTimeoutMs = options.maxTimeoutMs ?? 30_000;
     this.onToolAction = options.onToolAction;
+    this.repositoryTrust = options.repositoryTrust ?? 'untrusted_external';
   }
 
   private readonly onToolAction:
     ((result: CommandResult) => Promise<void>) | undefined;
+  private readonly repositoryTrust: RepositoryTrust;
 
   public async inspect(): Promise<RepositoryInspection> {
     const canonicalRoot = await realpath(this.root);
@@ -63,6 +68,14 @@ export class SafeLocalWorkspace implements RepositoryWorkspace {
       const result = await execFileAsync(request.command, [...request.args], {
         cwd: this.root,
         encoding: 'utf8',
+        env: {
+          CI: '1',
+          NODE_ENV: 'test',
+          PATH: process.env.PATH ?? '',
+          npm_config_audit: 'false',
+          npm_config_fund: 'false',
+          npm_config_update_notifier: 'false',
+        },
         maxBuffer: this.#maxOutputBytes * 2,
         timeout: Math.min(
           request.timeoutMs ?? this.#maxTimeoutMs,
@@ -98,28 +111,54 @@ export class SafeLocalWorkspace implements RepositoryWorkspace {
   }
 
   public async changedFiles(): Promise<readonly string[]> {
+    return (await this.changes()).map(({ path }) => path);
+  }
+
+  public async changes(): Promise<readonly WorkspaceChange[]> {
     const result = await this.run({
       command: 'git',
-      args: ['diff', '--name-only'],
+      args: ['status', '--porcelain=v1'],
     });
+    if (result.exitCode !== 0) return [];
     return result.stdout
       .split('\n')
-      .map((value) => value.trim())
-      .filter(Boolean);
+      .filter(Boolean)
+      .map((line) => {
+        const indexStatus = line[0] ?? ' ';
+        const worktreeStatus = line[1] ?? ' ';
+        const rawPath = line.slice(3);
+        const path = rawPath.includes(' -> ')
+          ? (rawPath.split(' -> ').at(-1) ?? rawPath)
+          : rawPath;
+        const status = `${indexStatus}${worktreeStatus}`;
+        const kind: WorkspaceChange['kind'] =
+          status === '??'
+            ? 'untracked'
+            : status.includes('R')
+              ? 'renamed'
+              : status.includes('D')
+                ? 'deleted'
+                : status.includes('A')
+                  ? 'added'
+                  : status.includes('M')
+                    ? 'modified'
+                    : 'other';
+        return { path, indexStatus, worktreeStatus, kind };
+      });
   }
 
   private validate(request: CommandRequest): void {
-    if (!allowedCommands.has(request.command))
+    const pattern = [request.command, ...request.args].join('\0');
+    if (!allowedPatterns.has(pattern))
       throw new UnsafeCommandError(
-        `Command is not allowlisted: ${request.command}`,
+        `Command pattern is not allowlisted: ${[request.command, ...request.args].join(' ')}`,
       );
-    const normalized = request.args.map((value) =>
-      value.toLowerCase().replace(/^--?/, ''),
-    );
-    const prohibited = normalized.find((value) => destructiveTokens.has(value));
-    if (prohibited)
+    if (
+      request.command === 'npm' &&
+      this.repositoryTrust !== 'trusted_internal'
+    )
       throw new UnsafeCommandError(
-        `Potentially destructive or external command denied: ${prohibited}`,
+        `Repository trust '${this.repositoryTrust}' requires a hardened network-disabled sandbox for npm scripts.`,
       );
     if ((request.timeoutMs ?? 0) < 0)
       throw new UnsafeCommandError('Timeout must be non-negative.');

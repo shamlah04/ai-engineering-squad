@@ -253,3 +253,40 @@ It also creates a reusable spine for every later specialist without committing t
 8. How long must audit history be retained, and what data requires redaction or deletion?
 9. Does “validated pull-request proposal” explicitly exclude remote PR creation for the MVP, as assumed here?
 10. Which actions beyond external writes require a human checkpoint: architecture acceptance, implementation start, test execution, or each phase transition?
+
+## 7. Production Foundation Slice 9
+
+### Slice 9A — Correct execution semantics
+
+**Status: Complete (2026-07-19).**
+
+- All required typecheck, lint, formatting, test, and build gates execute after a Developer assignment.
+- Required failures remain in implementation while retries remain and transition to structured `blocked` state at the retry limit.
+- Change detection uses porcelain status and includes staged, unstaged, renamed, deleted, and untracked paths.
+- Delivery reports derive quality gates, evidence, recommendation, findings, risks, and change summary from workflow data.
+- Audit sequence allocation is owned by the repository adapter.
+
+### Slice 9B — Hardened workspace policy
+
+**Status: Partially complete (2026-07-19).**
+
+Complete:
+
+- Exact command-pattern matching replaces executable-name allowlisting.
+- `node`, `npx`, arbitrary npm scripts, and Git mutation/network commands are denied.
+- Repository trust is explicit; npm scripts run only for `trusted_internal` repositories.
+- Child processes receive a minimal environment, timeout, and output limit.
+
+Deferred:
+
+- OS/container isolation, outbound-network denial, read-only parent mounts, CPU/memory limits, and dedicated temporary worktrees.
+
+### Slice 9C — Real Product Analyst
+
+**Status: Deferred pending explicit provider, dependency, credential, cost, and data-handling approval.**
+
+### Slice 9D — Actual code modification
+
+**Status: Deferred until an isolated worktree and file-operation policy exist.**
+
+Do not enable model-generated file writes in the current process workspace. The next implementation milestone is a standard-library change-set validator and isolated Git worktree editor, followed by one explicitly approved structured-generation provider.

@@ -1,6 +1,6 @@
 import type { AuditEvent } from '../domain/audit.js';
 
 export interface AuditLog {
-  append(event: AuditEvent): Promise<void>;
+  appendAtomically(event: Omit<AuditEvent, 'sequence'>): Promise<AuditEvent>;
   list(taskId: string): Promise<readonly AuditEvent[]>;
 }

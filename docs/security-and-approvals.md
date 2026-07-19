@@ -20,15 +20,17 @@ Future external operations additionally require an approval scoped to the exact 
 
 The local workspace adapter:
 
-- Restricts execution to `git`, `npm`, `node`, and `npx`.
-- Rejects destructive and external-write subcommands such as `reset`, `clean`, `push`, `merge`, `publish`, and `deploy`.
+- Matches complete command patterns for the repository's five quality gates and read-only Git status/diff operations.
+- Denies `node`, `npx`, arbitrary npm scripts, Git mutations, and Git network operations.
+- Requires `trusted_internal` classification before executing npm scripts; other trust levels require a hardened network-disabled sandbox that is not yet implemented.
 - Uses argument arrays rather than a shell.
+- Passes a minimal environment to child processes.
 - Applies timeout and output-size limits.
 - Redacts known token, password, secret, API-key, and bearer-token patterns.
 - Filters dependencies, builds, coverage, and Git internals from inspection.
 - Exposes command results to an audit callback.
 
-This is a policy boundary, not an OS sandbox. Production use requires stronger process isolation and a narrower operation-level capability model.
+This is a policy boundary, not an OS sandbox. Production use requires network-disabled process/container isolation, read-only parent mounts, CPU/memory limits, and dedicated temporary worktrees.
 
 ## Prompt injection
 

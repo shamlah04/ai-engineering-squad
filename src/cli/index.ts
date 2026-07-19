@@ -24,7 +24,9 @@ async function main(): Promise<void> {
     new DeterministicProductAnalyst(),
     new SystemClock(),
     new UuidGenerator(),
-    new SafeLocalWorkspace(process.cwd()),
+    new SafeLocalWorkspace(process.cwd(), {
+      repositoryTrust: 'trusted_internal',
+    }),
   );
   console.log('AI Engineering Squad — local deterministic demo');
   console.log(

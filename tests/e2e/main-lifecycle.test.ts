@@ -21,6 +21,15 @@ const workspace: RepositoryWorkspace = {
     }),
   changedFiles: () =>
     Promise.resolve(['src/feature.ts', 'tests/feature.test.ts']),
+  changes: () =>
+    Promise.resolve([
+      {
+        path: 'src/feature.ts',
+        indexStatus: ' ',
+        worktreeStatus: 'M',
+        kind: 'modified',
+      },
+    ]),
 };
 
 describe('main MVP lifecycle', () => {
