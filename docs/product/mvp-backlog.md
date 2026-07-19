@@ -23,6 +23,8 @@ The backlog is organized as independently demonstrable vertical slices. Each sli
 
 ### Slice 0 — Make the scaffold trustworthy
 
+**Status: Complete (2026-07-19).**
+
 **Goal:** Establish a green, minimal TypeScript foundation before product code.
 
 Work:
@@ -42,6 +44,8 @@ Acceptance:
 Implementation note (2026-07-19): completed with a minimal GitHub Actions workflow using Node.js 22 and the repository's existing npm quality commands. The baseline has no runtime dependencies.
 
 ### Slice 1 — Requirement clarification loop with audit trail (recommended first working slice)
+
+**Status: Complete (2026-07-19).**
 
 **User outcome:** A human creates a task, receives missing requirement questions, answers them, and sees the workflow resume to requirement readiness with a complete audit trail.
 
@@ -69,43 +73,47 @@ Acceptance scenarios:
 8. A specialist has no state repository write capability.
 9. The end-to-end acceptance test requires no network, credentials, or model provider.
 
-### Slice 2 — Provider-neutral Product Analyst
+Implementation note: delivered as an application-service boundary with strict workflow and agent contracts, optimistic versions, in-memory repositories, a deterministic Product Analyst, mapped plus free-form clarification, explicit readiness override, secret-redacted append-only audit events, and unit/integration coverage. No provider SDK or runtime dependency was added.
 
-**User outcome:** An operator may configure a real AI provider for requirement analysis while retaining the same workflow behavior and deterministic fallback tests.
+### Slice 2 — Planning and architecture approval
 
-Work:
+**Status: Complete (2026-07-19).**
 
-- Define a minimal provider request/response adapter behind `AgentRunner`.
-- Add runtime schema validation and safe parse/retry behavior for structured Product Analyst results.
-- Bound context, time, and retries; redact sensitive audit fields.
-- Keep provider selection in composition/configuration code.
-- Add contract tests reusable by fake and real adapters.
-
-Acceptance:
-
-- Changing providers does not change domain or application code.
-- Malformed output cannot transition workflow state.
-- Provider failure is recorded and produces a recoverable, explicit workflow outcome.
-- Tests and local development still work with no provider credentials.
-
-### Slice 3 — Architecture proposal
-
-**User outcome:** For ready requirements, the Solution Architect returns a reviewable implementation approach.
+**User outcome:** A human can review, revise, approve, or reject a structured technical plan produced by a bounded Solution Architect.
 
 Work:
 
-- Add the bounded Solution Architect assignment/result contract.
-- Add states and transitions for architecture analysis and human feedback.
-- Produce affected components, interfaces, assumptions, risks, and validation strategy.
-- Permit human rejection or clarification before proceeding.
+- Define a versioned Solution Architect assignment/result behind `AgentRunner`.
+- Produce risks, assumptions, dependencies, affected components, test strategy, and rollback considerations.
+- Version revised plans and retain their history.
+- Require audited human approval before implementation may begin.
 
 Acceptance:
 
-- The architect receives only approved requirements and bounded repository context.
-- Human feedback is recorded and a revised proposal is traceable.
-- The architect cannot edit code or change workflow state.
+- The architect cannot transition workflow state or approve its own plan.
+- Approval, rejection, and requested changes use validated transitions.
+- Every plan assignment, result, revision, and decision is audited.
+
+Implementation note: the provider-neutral `AgentRunner` now includes a versioned Solution Architect contract and deterministic adapter. Plans are versioned, contain the required risks, assumptions, dependencies, components, test strategy, and rollback considerations, and cannot advance until an explicit audited human approval. Rejection and requested-change paths are deterministic.
+
+### Slice 3 — Repository workspace and safe tools
+
+**Status: Complete (2026-07-19).**
+
+**User outcome:** Approved local work can inspect the repository and execute bounded validation commands without obtaining external or destructive authority.
+
+Implementation note: a standard-library `RepositoryWorkspace` port and root-confined local adapter provide filtered inspection, changed-file detection, command allowlisting, destructive/external command rejection, timeouts, output limits, secret redaction, and a tool-action audit callback. No remote access, credentials, or runtime dependency was added.
+
+Acceptance:
+
+- Repository inspection excludes generated, dependency, and Git-internal content.
+- Only allowlisted local commands execute within the configured workspace root.
+- Destructive and external-write command tokens are denied before execution.
+- Results are time-bounded, size-bounded, redacted, and available to an audit sink.
 
 ### Slice 4 — Workspace-local implementation proposal
+
+**Status: Complete (2026-07-19).**
 
 **User outcome:** The Developer creates a scoped implementation in an isolated local workspace and reports the exact changes.
 
@@ -122,7 +130,11 @@ Acceptance:
 - Attempts to use prohibited capabilities are denied and audited.
 - No remote branch, pull request, or message is created.
 
+Implementation note: the orchestrator issues a versioned bounded Developer assignment only after plan approval, enforces a three-attempt limit, runs validation through the safe workspace port, captures changed files, command results, and failures, and transitions to validation itself. The Developer cannot approve or transition its own work.
+
 ### Slice 5 — Quality validation
+
+**Status: Complete (2026-07-19).**
 
 **User outcome:** The Quality Engineer validates the implementation against acceptance criteria and returns evidence.
 
@@ -139,7 +151,11 @@ Acceptance:
 - Failed checks cannot be reported as successful.
 - Retry/repair loops are bounded and fully audited.
 
+Implementation note: the Quality Engineer deterministically maps every acceptance criterion to pass/fail/blocked status and command evidence, detects missing evidence, reports regression risks, and returns failures to the orchestrator-owned bounded implementation loop.
+
 ### Slice 6 — Independent code review
+
+**Status: Complete (2026-07-19).**
 
 **User outcome:** The Code Reviewer returns actionable findings and a go/no-go recommendation based on the diff and evidence.
 
@@ -155,7 +171,11 @@ Acceptance:
 - Findings are structured, traceable, and deduplicated across iterations.
 - The reviewer cannot edit, merge, publish, or approve on behalf of the human.
 
+Implementation note: the bounded Code Reviewer consumes read-only changed-file and quality evidence, categorizes and deduplicates blocking findings, and recommends approval or remediation. Only the orchestrator routes a bounded retry, with Quality Engineer re-validation required afterward.
+
 ### Slice 7 — Validated pull-request proposal
+
+**Status: Complete (2026-07-19).**
 
 **User outcome:** The human receives a complete, validated proposal suitable for manually creating a pull request.
 
@@ -172,24 +192,28 @@ Acceptance:
 - The system performs no external write and does not create a remote pull request.
 - The human can see unresolved risks and the complete workflow history.
 
-### Slice 8 — Explicitly approved external publication (post-MVP candidate)
+Implementation note: after passing quality evidence and review, the orchestrator assembles a consolidated delivery package with requirements, approved plan version, changed files, criterion evidence, review status, risks, and deployment considerations. Explicit human delivery approval is audited, and an exporter writes a local Markdown PR proposal that states no remote operation occurred.
 
-**User outcome:** A human may explicitly approve publishing one already-validated pull-request proposal.
+### Slice 8 — Usable demonstration surface
+
+**Status: Complete (2026-07-19).**
+
+**User outcome:** A human can drive and inspect the complete deterministic MVP lifecycle from a local terminal.
 
 Work:
 
-- Introduce scoped, expiring approval records and an approval-checking capability gateway.
-- Present the exact repository, branch, title, body, and write operation before approval.
-- Add a Git host adapter outside the domain/application core.
-- Revalidate scope and approval immediately before the external write.
+- Add a dependency-free terminal interface over the application service.
+- Show state, clarification questions, plans, assignments/results through audit events, criterion evidence, review findings, delivery package, and the complete timeline.
+- Support human plan and delivery decisions.
+- Export an approved local PR proposal.
 
 Acceptance:
 
-- No approval means no external write.
-- Approval for one action cannot authorize another action or credential use.
-- Proposal, decision, attempted write, and result are audited.
+- The main lifecycle is usable in one local process.
+- The surface exposes no credential, production, merge, deploy, remote branch, or PR publication capability.
+- Important presentation behavior is covered by tests.
 
-This slice is deliberately outside the initial MVP unless user validation shows that publication is essential.
+Implementation note: `npm run demo` starts a terminal workflow using in-memory persistence, deterministic specialists, the safe local workspace, explicit plan and delivery checkpoints, visible audit history, and local-only proposal export.
 
 ## 4. Recommended first slice
 

@@ -1,7 +1,11 @@
-export function greeting(name: string): string {
-  return `Hello, ${name}!`;
-}
-
-if (import.meta.main) {
-  console.log(greeting('AI Engineering Squad'));
-}
+export * from './adapters/agents/deterministic-product-analyst.js';
+export * from './adapters/memory/in-memory-audit-log.js';
+export * from './adapters/memory/in-memory-workflow-repository.js';
+export * from './adapters/workspace/safe-local-workspace.js';
+export * from './application/team-orchestrator.js';
+export * from './application/export-delivery-proposal.js';
+export * from './domain/agents.js';
+export * from './domain/approval.js';
+export * from './domain/audit.js';
+export * from './domain/workflow.js';
+export * from './ports/repository-workspace.js';

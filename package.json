@@ -10,6 +10,7 @@
     "build": "tsc -p tsconfig.build.json",
     "check": "npm run typecheck && npm run lint && npm run test",
     "dev": "tsx watch src/index.ts",
+    "demo": "tsx src/cli/index.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint .",
