@@ -7,5 +7,6 @@ export * from './application/export-delivery-proposal.js';
 export * from './domain/agents.js';
 export * from './domain/approval.js';
 export * from './domain/audit.js';
+export * from './domain/execution-policy.js';
 export * from './domain/workflow.js';
 export * from './ports/repository-workspace.js';

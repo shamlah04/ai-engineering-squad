@@ -4,9 +4,14 @@ import type { AuditLog } from '../../ports/audit-log.js';
 export class InMemoryAuditLog implements AuditLog {
   readonly #events: AuditEvent[] = [];
 
-  public append(event: AuditEvent): Promise<void> {
-    this.#events.push(structuredClone(event));
-    return Promise.resolve();
+  public appendAtomically(
+    event: Omit<AuditEvent, 'sequence'>,
+  ): Promise<AuditEvent> {
+    const sequence =
+      this.#events.filter(({ taskId }) => taskId === event.taskId).length + 1;
+    const sequenced = { ...event, sequence };
+    this.#events.push(structuredClone(sequenced));
+    return Promise.resolve(sequenced);
   }
 
   public list(taskId: string): Promise<readonly AuditEvent[]> {

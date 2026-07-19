@@ -6,6 +6,7 @@ import type {
   SolutionArchitectAssignment,
 } from '../domain/agents.js';
 import { redactSecrets } from '../domain/audit.js';
+import { defaultQualityGates } from '../domain/execution-policy.js';
 import {
   type AcceptanceCriterion,
   type ClarificationAnswer,
@@ -216,19 +217,28 @@ export class TeamOrchestrator {
       assignment.agentRole,
     );
     const agentResult = await this.agents.runDeveloper(assignment);
-    const commandResult = await this.workspace.run({
-      command: 'npm',
-      args: ['test'],
-      timeoutMs: 30_000,
-    });
-    await this.record(
-      implementing,
-      'tool',
-      'safe-command-runner',
-      'tool.command_executed',
-      commandResult.command,
-      `exit=${commandResult.exitCode}`,
-    );
+    const commandResults = [];
+    for (const gate of defaultQualityGates) {
+      const commandResult = await this.workspace.run({
+        command: gate.command,
+        args: gate.args,
+        timeoutMs: 30_000,
+      });
+      commandResults.push({
+        gateId: gate.id,
+        command: commandResult.command,
+        exitCode: commandResult.exitCode,
+        required: gate.required,
+      });
+      await this.record(
+        implementing,
+        'tool',
+        'safe-command-runner',
+        'tool.command_executed',
+        commandResult.command,
+        `gate=${gate.id}; exit=${commandResult.exitCode}`,
+      );
+    }
     const changedFiles = await this.workspace.changedFiles();
     const withExecution: EngineeringTask = {
       ...implementing,
@@ -239,16 +249,10 @@ export class TeamOrchestrator {
           summary: agentResult.summary,
           instructions: agentResult.output.instructions,
           changedFiles,
-          commandResults: [
-            {
-              command: commandResult.command,
-              exitCode: commandResult.exitCode,
-            },
-          ],
-          failures:
-            commandResult.exitCode === 0
-              ? []
-              : [commandResult.stderr || 'Validation command failed.'],
+          commandResults,
+          failures: commandResults
+            .filter(({ required, exitCode }) => required && exitCode !== 0)
+            .map(({ gateId }) => `Required quality gate failed: ${gateId}`),
         },
       ],
     };
@@ -260,8 +264,59 @@ export class TeamOrchestrator {
       agentResult.summary,
       agentResult.requestedNextAction,
     );
+    const requiredFailed = commandResults.some(
+      ({ required, exitCode }) => required && exitCode !== 0,
+    );
+    if (requiredFailed) {
+      const failure = {
+        code: 'QUALITY_GATE_FAILED',
+        stage: 'implementing' as const,
+        recoverable: attempt < 3,
+        message: 'One or more required quality gates failed.',
+        evidenceReferences: commandResults
+          .filter(({ exitCode }) => exitCode !== 0)
+          .map(({ gateId }) => gateId),
+      };
+      if (attempt >= 3) {
+        const blocked = transitionTask(
+          { ...withExecution, failure },
+          'blocked',
+          this.clock.now(),
+        );
+        await this.workflows.save(blocked, implementing.version);
+        await this.record(
+          blocked,
+          'orchestrator',
+          'team-orchestrator',
+          'workflow.blocked',
+          failure.code,
+          failure.message,
+          undefined,
+          failure.message,
+        );
+        return blocked;
+      }
+      const retrying: EngineeringTask = {
+        ...withExecution,
+        failure,
+        version: implementing.version + 1,
+        updatedAt: this.clock.now(),
+      };
+      await this.workflows.save(retrying, implementing.version);
+      await this.record(
+        retrying,
+        'orchestrator',
+        'team-orchestrator',
+        'implementation.retry_requested',
+        failure.code,
+        `Attempt ${attempt + 1}`,
+      );
+      return retrying;
+    }
+    const { failure: _resolvedFailure, ...successfulExecution } = withExecution;
+    void _resolvedFailure;
     const validating = transitionTask(
-      withExecution,
+      successfulExecution,
       'validating',
       this.clock.now(),
     );
@@ -692,8 +747,7 @@ export class TeamOrchestrator {
     approvalReference?: string,
     errorInformation?: string,
   ): Promise<void> {
-    const current = await this.audit.list(task.id);
-    await this.audit.append({
+    await this.audit.appendAtomically({
       eventId: this.ids.next('event'),
       taskId: task.id,
       workflowState: task.state,
@@ -708,7 +762,6 @@ export class TeamOrchestrator {
       ...(errorInformation
         ? { errorInformation: redactSecrets(errorInformation) }
         : {}),
-      sequence: current.length + 1,
     });
   }
 
@@ -717,6 +770,11 @@ export class TeamOrchestrator {
     changedFiles: readonly string[],
   ): string {
     const plan = task.plans.at(-1);
+    const execution = task.developerExecutions.at(-1);
+    const review = task.reviewResult;
+    const findings = review?.findings ?? [];
+    const blocking = findings.filter(({ severity }) => severity === 'blocking');
+    const advisory = findings.filter(({ severity }) => severity === 'advisory');
     return [
       `## Objective\n${task.objective}`,
       `## Approved plan\nVersion ${plan?.version ?? 'unknown'}`,
@@ -731,7 +789,28 @@ export class TeamOrchestrator {
           })
           .join('\n') ?? 'No evidence.'
       }`,
-      '## Review\nNo unresolved blocking findings.',
+      `## Quality gates\n${
+        execution?.commandResults
+          .map(
+            ({ gateId, command, exitCode, required }) =>
+              `${gateId}: ${command} → exit ${exitCode}${required ? ' (required)' : ''}`,
+          )
+          .join('\n') ?? 'No quality-gate evidence.'
+      }`,
+      `## Review\nRecommendation: ${review?.recommendation ?? 'unavailable'}\nBlocking findings: ${
+        blocking.length
+          ? blocking.map(({ summary }) => summary).join('; ')
+          : 'none'
+      }\nAdvisory findings: ${
+        advisory.length
+          ? advisory.map(({ summary }) => summary).join('; ')
+          : 'none'
+      }`,
+      `## Change summary\n${
+        changedFiles.length
+          ? `${changedFiles.length} changed path(s): ${changedFiles.join(', ')}`
+          : 'No workspace changes reported.'
+      }`,
     ].join('\n\n');
   }
 }

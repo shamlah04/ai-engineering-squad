@@ -49,6 +49,6 @@ The Team Orchestrator is the only workflow-state owner. Product Analyst, Solutio
 
 - State and audit events are in memory and are lost on process exit.
 - Specialists are deterministic fakes; no real AI provider is configured.
-- The safe workspace executes a narrow local allowlist but is not an OS-level sandbox.
+- The safe workspace matches exact quality/read-only Git commands and requires trusted-repository classification, but is not an OS-level sandbox.
 - The Developer produces bounded instructions and validation evidence; autonomous arbitrary code editing is intentionally not enabled.
 - Authentication, multi-user concurrency, remote integrations, production access, deployment, merge, and remote PR publication are deferred.

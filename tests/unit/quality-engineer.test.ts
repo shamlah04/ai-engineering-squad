@@ -20,7 +20,14 @@ describe('Quality Engineer', () => {
       ...base,
       input: {
         ...base.input,
-        commandResults: [{ command: 'npm test', exitCode: 0 }],
+        commandResults: [
+          {
+            gateId: 'test',
+            command: 'npm test',
+            exitCode: 0,
+            required: true,
+          },
+        ],
       },
     });
     expect(result.output.status).toBe('passed');
@@ -48,7 +55,14 @@ describe('Quality Engineer', () => {
       ...base,
       input: {
         ...base.input,
-        commandResults: [{ command: 'npm test', exitCode: 1 }],
+        commandResults: [
+          {
+            gateId: 'test',
+            command: 'npm test',
+            exitCode: 1,
+            required: true,
+          },
+        ],
       },
     });
     expect(result.output.status).toBe('failed');

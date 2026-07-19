@@ -11,6 +11,7 @@ export type WorkflowState =
   | 'reviewing'
   | 'waiting_for_delivery_approval'
   | 'completed'
+  | 'blocked'
   | 'failed';
 
 export interface AcceptanceCriterion {
@@ -74,8 +75,10 @@ export interface DeveloperExecution {
   readonly instructions: readonly string[];
   readonly changedFiles: readonly string[];
   readonly commandResults: readonly {
+    readonly gateId: string;
     readonly command: string;
     readonly exitCode: number;
+    readonly required: boolean;
   }[];
   readonly failures: readonly string[];
 }
@@ -130,6 +133,14 @@ export interface DeliveryDecision {
   readonly approvalReference: string;
 }
 
+export interface WorkflowFailure {
+  readonly code: string;
+  readonly stage: WorkflowState;
+  readonly recoverable: boolean;
+  readonly message: string;
+  readonly evidenceReferences: readonly string[];
+}
+
 export interface EngineeringTask {
   readonly id: string;
   readonly title: string;
@@ -156,6 +167,7 @@ export interface EngineeringTask {
   readonly reviewResult?: ReviewResult;
   readonly deliveryPackage?: DeliveryPackage;
   readonly deliveryDecision?: DeliveryDecision;
+  readonly failure?: WorkflowFailure;
 }
 
 const transitions: Readonly<Record<WorkflowState, readonly WorkflowState[]>> = {
@@ -174,11 +186,12 @@ const transitions: Readonly<Record<WorkflowState, readonly WorkflowState[]>> = {
   planning: ['waiting_for_plan_approval', 'failed'],
   waiting_for_plan_approval: ['planning', 'plan_approved', 'failed'],
   plan_approved: ['implementing', 'failed'],
-  implementing: ['validating', 'failed'],
+  implementing: ['validating', 'blocked', 'failed'],
   validating: ['reviewing', 'implementing', 'failed'],
   reviewing: ['implementing', 'waiting_for_delivery_approval', 'failed'],
   waiting_for_delivery_approval: ['completed', 'failed'],
   completed: [],
+  blocked: ['implementing', 'failed'],
   failed: [],
 };
 

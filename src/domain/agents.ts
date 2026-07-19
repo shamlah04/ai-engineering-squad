@@ -102,8 +102,10 @@ export interface QualityEngineerAssignment extends AgentAssignmentBase {
     readonly acceptanceCriteria: readonly AcceptanceCriterion[];
     readonly changedFiles: readonly string[];
     readonly commandResults: readonly {
+      readonly gateId: string;
       readonly command: string;
       readonly exitCode: number;
+      readonly required: boolean;
     }[];
   };
 }
