@@ -192,24 +192,26 @@ Acceptance:
 
 Implementation note: after passing quality evidence and review, the orchestrator assembles a consolidated delivery package with requirements, approved plan version, changed files, criterion evidence, review status, risks, and deployment considerations. Explicit human delivery approval is audited, and an exporter writes a local Markdown PR proposal that states no remote operation occurred.
 
-### Slice 8 — Explicitly approved external publication (post-MVP candidate)
+### Slice 8 — Usable demonstration surface
 
-**User outcome:** A human may explicitly approve publishing one already-validated pull-request proposal.
+**Status: Complete (2026-07-19).**
+
+**User outcome:** A human can drive and inspect the complete deterministic MVP lifecycle from a local terminal.
 
 Work:
 
-- Introduce scoped, expiring approval records and an approval-checking capability gateway.
-- Present the exact repository, branch, title, body, and write operation before approval.
-- Add a Git host adapter outside the domain/application core.
-- Revalidate scope and approval immediately before the external write.
+- Add a dependency-free terminal interface over the application service.
+- Show state, clarification questions, plans, assignments/results through audit events, criterion evidence, review findings, delivery package, and the complete timeline.
+- Support human plan and delivery decisions.
+- Export an approved local PR proposal.
 
 Acceptance:
 
-- No approval means no external write.
-- Approval for one action cannot authorize another action or credential use.
-- Proposal, decision, attempted write, and result are audited.
+- The main lifecycle is usable in one local process.
+- The surface exposes no credential, production, merge, deploy, remote branch, or PR publication capability.
+- Important presentation behavior is covered by tests.
 
-This slice is deliberately outside the initial MVP unless user validation shows that publication is essential.
+Implementation note: `npm run demo` starts a terminal workflow using in-memory persistence, deterministic specialists, the safe local workspace, explicit plan and delivery checkpoints, visible audit history, and local-only proposal export.
 
 ## 4. Recommended first slice
 
