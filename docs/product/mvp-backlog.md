@@ -23,6 +23,8 @@ The backlog is organized as independently demonstrable vertical slices. Each sli
 
 ### Slice 0 — Make the scaffold trustworthy
 
+**Status: Complete (2026-07-19).**
+
 **Goal:** Establish a green, minimal TypeScript foundation before product code.
 
 Work:

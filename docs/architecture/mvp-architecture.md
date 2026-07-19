@@ -1,13 +1,13 @@
 # AI Engineering Squad — MVP Architecture
 
-Status: Proposed  
+Status: Implemented MVP
 Last updated: 2026-07-19
 
 ## 1. Purpose and scope
 
 AI Engineering Squad is a human-controlled workflow for moving an engineering task through analysis, design, implementation, testing, review, and a validated pull-request proposal. The MVP must make agent work inspectable, bounded, resumable, and subject to explicit human approval.
 
-The first vertical slice stops after Product Analyst requirement-readiness evaluation and human clarification. Later slices add the remaining specialist roles without changing the workflow ownership model.
+The implemented MVP covers requirement clarification, versioned planning and approval, bounded local execution, quality evidence, code review, delivery approval, local PR-proposal export, and a terminal demonstration without changing the workflow ownership model.
 
 ## 2. Repository assessment
 
@@ -201,7 +201,7 @@ All role outputs include `schemaVersion`, `role`, `taskId`, `assignmentId`, `sum
 
 ## 7. Workflow model
 
-Initial extensible states:
+Implemented states:
 
 ```text
 created
@@ -209,11 +209,14 @@ created
   -> awaiting_clarification
   -> analyzing_requirements  (after human response)
   -> requirements_ready
-  -> architecture_ready      (later slice)
-  -> implementation_ready    (later slice)
-  -> testing                 (later slice)
-  -> review                  (later slice)
-  -> pr_proposal_ready       (later slice)
+  -> planning
+  -> waiting_for_plan_approval
+  -> plan_approved
+  -> implementing
+  -> validating
+  -> reviewing
+  -> waiting_for_delivery_approval
+  -> completed
 
 Any active state -> failed (with a recorded reason)
 ```
@@ -283,11 +286,13 @@ The default policy denies these capabilities to every agent:
 
 If a later workflow needs one of these actions, the orchestrator must create a precise proposed action, pause, obtain explicit human approval scoped to that action, validate that approval immediately before execution, and audit the proposal, decision, and outcome. Approval is never inferred from a task description or specialist recommendation.
 
-## 11. Deferred decisions
+## 11. Deferred production capabilities
 
 - HTTP API and web UI.
 - Database choice and distributed workers.
 - Real model provider and model-selection policy.
+- Durable transactional workflow and audit persistence.
+- OS-level sandboxing for implementation tools.
 - Sandboxed repository tooling.
 - Git hosting integration and pull-request publishing.
 - Authentication, multi-tenancy, quotas, and billing.
