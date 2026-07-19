@@ -173,6 +173,8 @@ Implementation note: the bounded Code Reviewer consumes read-only changed-file a
 
 ### Slice 7 — Validated pull-request proposal
 
+**Status: Complete (2026-07-19).**
+
 **User outcome:** The human receives a complete, validated proposal suitable for manually creating a pull request.
 
 Work:
@@ -187,6 +189,8 @@ Acceptance:
 - The proposal is reproducible from audited workflow artifacts.
 - The system performs no external write and does not create a remote pull request.
 - The human can see unresolved risks and the complete workflow history.
+
+Implementation note: after passing quality evidence and review, the orchestrator assembles a consolidated delivery package with requirements, approved plan version, changed files, criterion evidence, review status, risks, and deployment considerations. Explicit human delivery approval is audited, and an exporter writes a local Markdown PR proposal that states no remote operation occurred.
 
 ### Slice 8 — Explicitly approved external publication (post-MVP candidate)
 

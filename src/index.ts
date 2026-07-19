@@ -3,6 +3,7 @@ export * from './adapters/memory/in-memory-audit-log.js';
 export * from './adapters/memory/in-memory-workflow-repository.js';
 export * from './adapters/workspace/safe-local-workspace.js';
 export * from './application/team-orchestrator.js';
+export * from './application/export-delivery-proposal.js';
 export * from './domain/agents.js';
 export * from './domain/audit.js';
 export * from './domain/workflow.js';
