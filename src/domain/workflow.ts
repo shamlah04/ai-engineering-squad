@@ -6,6 +6,11 @@ export type WorkflowState =
   | 'planning'
   | 'waiting_for_plan_approval'
   | 'plan_approved'
+  | 'implementing'
+  | 'validating'
+  | 'reviewing'
+  | 'waiting_for_delivery_approval'
+  | 'completed'
   | 'failed';
 
 export interface AcceptanceCriterion {
@@ -63,6 +68,68 @@ export interface PlanApproval {
   readonly approvalReference: string;
 }
 
+export interface DeveloperExecution {
+  readonly attempt: number;
+  readonly summary: string;
+  readonly instructions: readonly string[];
+  readonly changedFiles: readonly string[];
+  readonly commandResults: readonly {
+    readonly command: string;
+    readonly exitCode: number;
+  }[];
+  readonly failures: readonly string[];
+}
+
+export interface CriterionEvidence {
+  readonly criterionId: string;
+  readonly status: 'passed' | 'failed' | 'blocked';
+  readonly evidenceReferences: readonly string[];
+  readonly notes: string;
+}
+
+export interface QualityResult {
+  readonly status: 'passed' | 'failed' | 'blocked';
+  readonly criteria: readonly CriterionEvidence[];
+  readonly regressionRisks: readonly string[];
+  readonly missingEvidence: readonly string[];
+}
+
+export interface ReviewFinding {
+  readonly id: string;
+  readonly severity: 'blocking' | 'advisory';
+  readonly category:
+    | 'correctness'
+    | 'maintainability'
+    | 'security'
+    | 'performance'
+    | 'test_coverage'
+    | 'architecture';
+  readonly summary: string;
+  readonly location?: string;
+}
+
+export interface ReviewResult {
+  readonly findings: readonly ReviewFinding[];
+  readonly recommendation: 'approve' | 'changes_required';
+}
+
+export interface DeliveryPackage {
+  readonly title: string;
+  readonly body: string;
+  readonly changedFiles: readonly string[];
+  readonly remainingRisks: readonly string[];
+  readonly deploymentConsiderations: readonly string[];
+  readonly createdAt: string;
+}
+
+export interface DeliveryDecision {
+  readonly decision: 'approved' | 'rejected';
+  readonly actorId: string;
+  readonly justification: string;
+  readonly timestamp: string;
+  readonly approvalReference: string;
+}
+
 export interface EngineeringTask {
   readonly id: string;
   readonly title: string;
@@ -84,6 +151,11 @@ export interface EngineeringTask {
   };
   readonly plans: readonly ImplementationPlan[];
   readonly planApproval?: PlanApproval;
+  readonly developerExecutions: readonly DeveloperExecution[];
+  readonly qualityResult?: QualityResult;
+  readonly reviewResult?: ReviewResult;
+  readonly deliveryPackage?: DeliveryPackage;
+  readonly deliveryDecision?: DeliveryDecision;
 }
 
 const transitions: Readonly<Record<WorkflowState, readonly WorkflowState[]>> = {
@@ -101,7 +173,12 @@ const transitions: Readonly<Record<WorkflowState, readonly WorkflowState[]>> = {
   requirements_ready: ['planning', 'failed'],
   planning: ['waiting_for_plan_approval', 'failed'],
   waiting_for_plan_approval: ['planning', 'plan_approved', 'failed'],
-  plan_approved: ['failed'],
+  plan_approved: ['implementing', 'failed'],
+  implementing: ['validating', 'failed'],
+  validating: ['reviewing', 'implementing', 'failed'],
+  reviewing: ['implementing', 'waiting_for_delivery_approval', 'failed'],
+  waiting_for_delivery_approval: ['completed', 'failed'],
+  completed: [],
   failed: [],
 };
 

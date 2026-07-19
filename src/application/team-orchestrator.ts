@@ -1,5 +1,8 @@
 import type {
+  CodeReviewerAssignment,
+  DeveloperAssignment,
   ProductAnalystAssignment,
+  QualityEngineerAssignment,
   SolutionArchitectAssignment,
 } from '../domain/agents.js';
 import { redactSecrets } from '../domain/audit.js';
@@ -13,6 +16,7 @@ import type { AgentRunner } from '../ports/agent-runner.js';
 import type { AuditLog } from '../ports/audit-log.js';
 import type { Clock } from '../ports/clock.js';
 import type { IdGenerator } from '../ports/id-generator.js';
+import type { RepositoryWorkspace } from '../ports/repository-workspace.js';
 import type { WorkflowRepository } from '../ports/workflow-repository.js';
 
 export interface CreateTaskInput {
@@ -40,6 +44,7 @@ export class TeamOrchestrator {
     private readonly agents: AgentRunner,
     private readonly clock: Clock,
     private readonly ids: IdGenerator,
+    private readonly workspace?: RepositoryWorkspace,
   ) {}
 
   public async createTask(input: CreateTaskInput): Promise<EngineeringTask> {
@@ -58,6 +63,7 @@ export class TeamOrchestrator {
       contradictions: [...(input.contradictions ?? [])],
       clarifications: [],
       plans: [],
+      developerExecutions: [],
       state: 'created',
       version: 1,
       createdAt: timestamp,
@@ -162,6 +168,286 @@ export class TeamOrchestrator {
 
   public async getTask(taskId: string): Promise<EngineeringTask> {
     return this.requireTask(taskId);
+  }
+
+  public async executeDevelopment(
+    taskId: string,
+    expectedVersion: number,
+  ): Promise<EngineeringTask> {
+    const existing = await this.requireTask(taskId);
+    if (existing.version !== expectedVersion)
+      throw new Error('Stale workflow version.');
+    if (existing.state !== 'plan_approved' && existing.state !== 'implementing')
+      throw new Error('Task is not approved for implementation.');
+    if (!this.workspace)
+      throw new Error('No repository workspace is configured.');
+    const attempt = existing.developerExecutions.length + 1;
+    if (attempt > 3) throw new Error('Developer retry limit reached.');
+    const implementing =
+      existing.state === 'implementing'
+        ? existing
+        : transitionTask(existing, 'implementing', this.clock.now());
+    if (implementing !== existing)
+      await this.workflows.save(implementing, existing.version);
+    const plan = existing.plans.at(-1);
+    if (!plan) throw new Error('No approved plan exists.');
+    const assignment: DeveloperAssignment = {
+      assignmentId: this.ids.next('assignment'),
+      taskId,
+      agentRole: 'developer',
+      contractVersion: '1.0',
+      input: {
+        objective: existing.objective,
+        planVersion: plan.version,
+        planSteps: plan.steps,
+        attempt,
+        remediationFindings:
+          existing.reviewResult?.findings.filter(
+            ({ severity }) => severity === 'blocking',
+          ) ?? [],
+      },
+    };
+    await this.record(
+      implementing,
+      'orchestrator',
+      'team-orchestrator',
+      'specialist.assignment_created',
+      assignment.assignmentId,
+      assignment.agentRole,
+    );
+    const agentResult = await this.agents.runDeveloper(assignment);
+    const commandResult = await this.workspace.run({
+      command: 'npm',
+      args: ['test'],
+      timeoutMs: 30_000,
+    });
+    await this.record(
+      implementing,
+      'tool',
+      'safe-command-runner',
+      'tool.command_executed',
+      commandResult.command,
+      `exit=${commandResult.exitCode}`,
+    );
+    const changedFiles = await this.workspace.changedFiles();
+    const withExecution: EngineeringTask = {
+      ...implementing,
+      developerExecutions: [
+        ...implementing.developerExecutions,
+        {
+          attempt,
+          summary: agentResult.summary,
+          instructions: agentResult.output.instructions,
+          changedFiles,
+          commandResults: [
+            {
+              command: commandResult.command,
+              exitCode: commandResult.exitCode,
+            },
+          ],
+          failures:
+            commandResult.exitCode === 0
+              ? []
+              : [commandResult.stderr || 'Validation command failed.'],
+        },
+      ],
+    };
+    await this.record(
+      withExecution,
+      'specialist',
+      'developer',
+      'specialist.result_received',
+      agentResult.summary,
+      agentResult.requestedNextAction,
+    );
+    const validating = transitionTask(
+      withExecution,
+      'validating',
+      this.clock.now(),
+    );
+    await this.workflows.save(validating, implementing.version);
+    return validating;
+  }
+
+  public async validateQuality(
+    taskId: string,
+    expectedVersion: number,
+  ): Promise<EngineeringTask> {
+    const existing = await this.requireTask(taskId);
+    if (existing.version !== expectedVersion || existing.state !== 'validating')
+      throw new Error('Task is not ready for validation.');
+    const execution = existing.developerExecutions.at(-1);
+    if (!execution) throw new Error('No developer execution exists.');
+    const assignment: QualityEngineerAssignment = {
+      assignmentId: this.ids.next('assignment'),
+      taskId,
+      agentRole: 'quality_engineer',
+      contractVersion: '1.0',
+      input: {
+        acceptanceCriteria: existing.acceptanceCriteria,
+        changedFiles: execution.changedFiles,
+        commandResults: execution.commandResults,
+      },
+    };
+    await this.record(
+      existing,
+      'orchestrator',
+      'team-orchestrator',
+      'specialist.assignment_created',
+      assignment.assignmentId,
+      assignment.agentRole,
+    );
+    const agentResult = await this.agents.runQualityEngineer(assignment);
+    const nextState =
+      agentResult.output.status === 'passed' ? 'reviewing' : 'implementing';
+    const result = transitionTask(
+      { ...existing, qualityResult: agentResult.output },
+      nextState,
+      this.clock.now(),
+    );
+    await this.workflows.save(result, existing.version);
+    await this.record(
+      result,
+      'specialist',
+      'quality-engineer',
+      'specialist.result_received',
+      agentResult.summary,
+      agentResult.requestedNextAction,
+    );
+    return result;
+  }
+
+  public async reviewCode(
+    taskId: string,
+    expectedVersion: number,
+  ): Promise<EngineeringTask> {
+    const existing = await this.requireTask(taskId);
+    if (
+      existing.version !== expectedVersion ||
+      existing.state !== 'reviewing' ||
+      !existing.qualityResult
+    )
+      throw new Error('Task is not ready for review.');
+    const execution = existing.developerExecutions.at(-1);
+    if (!execution) throw new Error('No developer execution exists.');
+    const assignment: CodeReviewerAssignment = {
+      assignmentId: this.ids.next('assignment'),
+      taskId,
+      agentRole: 'code_reviewer',
+      contractVersion: '1.0',
+      input: {
+        changedFiles: execution.changedFiles,
+        qualityEvidence: existing.qualityResult.criteria,
+        previousFindings: existing.reviewResult?.findings ?? [],
+      },
+    };
+    await this.record(
+      existing,
+      'orchestrator',
+      'team-orchestrator',
+      'specialist.assignment_created',
+      assignment.assignmentId,
+      assignment.agentRole,
+    );
+    const agentResult = await this.agents.runCodeReviewer(assignment);
+    if (agentResult.output.recommendation === 'changes_required') {
+      const remediation = transitionTask(
+        { ...existing, reviewResult: agentResult.output },
+        'implementing',
+        this.clock.now(),
+      );
+      await this.workflows.save(remediation, existing.version);
+      await this.record(
+        remediation,
+        'specialist',
+        'code-reviewer',
+        'review.remediation_requested',
+        agentResult.summary,
+        agentResult.requestedNextAction,
+      );
+      return remediation;
+    }
+    const timestamp = this.clock.now();
+    const ready = transitionTask(
+      {
+        ...existing,
+        reviewResult: agentResult.output,
+        deliveryPackage: {
+          title: existing.title,
+          body: this.buildDeliveryBody(existing, execution.changedFiles),
+          changedFiles: execution.changedFiles,
+          remainingRisks: [
+            ...(existing.qualityResult.regressionRisks ?? []),
+            ...existing.plans.at(-1)!.risks,
+          ],
+          deploymentConsiderations: ['No deployment is performed by the MVP.'],
+          createdAt: timestamp,
+        },
+      },
+      'waiting_for_delivery_approval',
+      timestamp,
+    );
+    await this.workflows.save(ready, existing.version);
+    await this.record(
+      ready,
+      'specialist',
+      'code-reviewer',
+      'specialist.result_received',
+      agentResult.summary,
+      agentResult.requestedNextAction,
+    );
+    await this.record(
+      ready,
+      'orchestrator',
+      'team-orchestrator',
+      'delivery.approval_requested',
+      ready.deliveryPackage?.title ?? '',
+      ready.state,
+    );
+    return ready;
+  }
+
+  public async decideDelivery(
+    taskId: string,
+    expectedVersion: number,
+    actorId: string,
+    decision: 'approved' | 'rejected',
+    justification: string,
+  ): Promise<EngineeringTask> {
+    const existing = await this.requireTask(taskId);
+    if (
+      existing.version !== expectedVersion ||
+      existing.state !== 'waiting_for_delivery_approval' ||
+      !justification.trim()
+    )
+      throw new Error('A pending delivery and justification are required.');
+    const timestamp = this.clock.now();
+    const approvalReference = this.ids.next('approval');
+    const result: EngineeringTask = {
+      ...transitionTask(
+        existing,
+        decision === 'approved' ? 'completed' : 'failed',
+        timestamp,
+      ),
+      deliveryDecision: {
+        decision,
+        actorId,
+        justification: justification.trim(),
+        timestamp,
+        approvalReference,
+      },
+    };
+    await this.workflows.save(result, existing.version);
+    await this.record(
+      result,
+      'human',
+      actorId,
+      `delivery.${decision}`,
+      justification,
+      result.state,
+      approvalReference,
+    );
+    return result;
   }
 
   public async createPlan(
@@ -398,7 +684,7 @@ export class TeamOrchestrator {
 
   private async record(
     task: EngineeringTask,
-    actorType: 'human' | 'orchestrator' | 'specialist',
+    actorType: 'human' | 'orchestrator' | 'specialist' | 'tool',
     actorId: string,
     action: string,
     inputSummary: string,
@@ -424,5 +710,28 @@ export class TeamOrchestrator {
         : {}),
       sequence: current.length + 1,
     });
+  }
+
+  private buildDeliveryBody(
+    task: EngineeringTask,
+    changedFiles: readonly string[],
+  ): string {
+    const plan = task.plans.at(-1);
+    return [
+      `## Objective\n${task.objective}`,
+      `## Approved plan\nVersion ${plan?.version ?? 'unknown'}`,
+      `## Changed files\n${changedFiles.length ? changedFiles.join('\n') : 'No tracked changes reported.'}`,
+      `## Validation\n${
+        task.qualityResult?.criteria
+          .map(({ criterionId, status }) => {
+            const description =
+              task.acceptanceCriteria.find(({ id }) => id === criterionId)
+                ?.description ?? criterionId;
+            return `${description} (${criterionId}): ${status}`;
+          })
+          .join('\n') ?? 'No evidence.'
+      }`,
+      '## Review\nNo unresolved blocking findings.',
+    ].join('\n\n');
   }
 }

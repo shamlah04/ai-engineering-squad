@@ -1,6 +1,12 @@
 import type {
+  CodeReviewerAssignment,
+  CodeReviewerResult,
+  DeveloperAssignment,
+  DeveloperResult,
   ProductAnalystAssignment,
   ProductAnalystResult,
+  QualityEngineerAssignment,
+  QualityEngineerResult,
   SolutionArchitectAssignment,
   SolutionArchitectResult,
 } from '../../domain/agents.js';
@@ -139,6 +145,120 @@ export class DeterministicProductAnalyst implements AgentRunner {
         rollbackConsiderations: [
           'Revert local changes; no external system is modified.',
         ],
+      },
+    });
+  }
+
+  public runDeveloper(
+    assignment: DeveloperAssignment,
+  ): Promise<DeveloperResult> {
+    return Promise.resolve({
+      assignmentId: assignment.assignmentId,
+      taskId: assignment.taskId,
+      agentRole: 'developer',
+      contractVersion: '1.0',
+      status: 'completed',
+      summary: `Prepared bounded implementation attempt ${assignment.input.attempt}.`,
+      assumptions: [],
+      risks: [],
+      evidenceReferences: [`plan-v${assignment.input.planVersion}`],
+      requestedNextAction: 'run_quality_validation',
+      output: {
+        instructions: assignment.input.planSteps,
+        expectedChangedFiles: [],
+      },
+    });
+  }
+
+  public runQualityEngineer(
+    assignment: QualityEngineerAssignment,
+  ): Promise<QualityEngineerResult> {
+    const commandsPassed = assignment.input.commandResults.every(
+      ({ exitCode }) => exitCode === 0,
+    );
+    const hasEvidence = assignment.input.commandResults.length > 0;
+    const status: 'passed' | 'failed' | 'blocked' = !hasEvidence
+      ? 'blocked'
+      : commandsPassed
+        ? 'passed'
+        : 'failed';
+    const criteria = assignment.input.acceptanceCriteria.map((criterion) => ({
+      criterionId: criterion.id,
+      status,
+      evidenceReferences: hasEvidence
+        ? assignment.input.commandResults.map(({ command }) => command)
+        : [],
+      notes: hasEvidence
+        ? commandsPassed
+          ? 'All collected validation commands passed.'
+          : 'At least one validation command failed.'
+        : 'No validation evidence was collected.',
+    }));
+    return Promise.resolve({
+      assignmentId: assignment.assignmentId,
+      taskId: assignment.taskId,
+      agentRole: 'quality_engineer',
+      contractVersion: '1.0',
+      status: status === 'passed' ? 'completed' : status,
+      summary: `Quality validation ${status}.`,
+      assumptions: [],
+      risks: status === 'passed' ? [] : ['Acceptance evidence is incomplete.'],
+      evidenceReferences: criteria.flatMap(
+        ({ evidenceReferences }) => evidenceReferences,
+      ),
+      requestedNextAction:
+        status === 'passed' ? 'begin_code_review' : 'return_to_developer',
+      output: {
+        status,
+        criteria,
+        regressionRisks:
+          status === 'passed' ? [] : ['Unvalidated regression risk.'],
+        missingEvidence: criteria
+          .filter((criterion) => criterion.evidenceReferences.length === 0)
+          .map(({ criterionId }) => criterionId),
+      },
+    });
+  }
+
+  public runCodeReviewer(
+    assignment: CodeReviewerAssignment,
+  ): Promise<CodeReviewerResult> {
+    const failedCriteria = assignment.input.qualityEvidence.filter(
+      ({ status }) => status !== 'passed',
+    );
+    const newFindings = failedCriteria.map((criterion) => ({
+      id: `quality-${criterion.criterionId}`,
+      severity: 'blocking' as const,
+      category: 'test_coverage' as const,
+      summary: `Acceptance criterion ${criterion.criterionId} lacks passing evidence.`,
+    }));
+    const byId = new Map(
+      [...assignment.input.previousFindings, ...newFindings].map((finding) => [
+        finding.id,
+        finding,
+      ]),
+    );
+    const findings = [...byId.values()].filter((finding) =>
+      newFindings.some(({ id }) => id === finding.id),
+    );
+    return Promise.resolve({
+      assignmentId: assignment.assignmentId,
+      taskId: assignment.taskId,
+      agentRole: 'code_reviewer',
+      contractVersion: '1.0',
+      status: 'completed',
+      summary:
+        findings.length === 0
+          ? 'Review found no blocking issues.'
+          : 'Review requires remediation.',
+      assumptions: [],
+      risks: [],
+      evidenceReferences: assignment.input.changedFiles,
+      requestedNextAction:
+        findings.length === 0 ? 'prepare_delivery' : 'remediate_findings',
+      output: {
+        findings,
+        recommendation: findings.length === 0 ? 'approve' : 'changes_required',
       },
     });
   }

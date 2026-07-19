@@ -111,6 +111,8 @@ Acceptance:
 
 ### Slice 4 — Workspace-local implementation proposal
 
+**Status: Complete (2026-07-19).**
+
 **User outcome:** The Developer creates a scoped implementation in an isolated local workspace and reports the exact changes.
 
 Work:
@@ -125,6 +127,8 @@ Acceptance:
 - Changes are confined to the approved workspace and task scope.
 - Attempts to use prohibited capabilities are denied and audited.
 - No remote branch, pull request, or message is created.
+
+Implementation note: the orchestrator issues a versioned bounded Developer assignment only after plan approval, enforces a three-attempt limit, runs validation through the safe workspace port, captures changed files, command results, and failures, and transitions to validation itself. The Developer cannot approve or transition its own work.
 
 ### Slice 5 — Quality validation
 
