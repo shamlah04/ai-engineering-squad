@@ -43,6 +43,8 @@ Implementation note (2026-07-19): completed with a minimal GitHub Actions workfl
 
 ### Slice 1 — Requirement clarification loop with audit trail (recommended first working slice)
 
+**Status: Complete (2026-07-19).**
+
 **User outcome:** A human creates a task, receives missing requirement questions, answers them, and sees the workflow resume to requirement readiness with a complete audit trail.
 
 Work:
@@ -68,6 +70,8 @@ Acceptance scenarios:
 7. Audit events are ordered and contain every assignment, result, human response, and transition.
 8. A specialist has no state repository write capability.
 9. The end-to-end acceptance test requires no network, credentials, or model provider.
+
+Implementation note: delivered as an application-service boundary with strict workflow and agent contracts, optimistic versions, in-memory repositories, a deterministic Product Analyst, mapped plus free-form clarification, explicit readiness override, secret-redacted append-only audit events, and unit/integration coverage. No provider SDK or runtime dependency was added.
 
 ### Slice 2 — Provider-neutral Product Analyst
 
