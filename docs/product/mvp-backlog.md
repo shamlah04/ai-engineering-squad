@@ -73,45 +73,41 @@ Acceptance scenarios:
 
 Implementation note: delivered as an application-service boundary with strict workflow and agent contracts, optimistic versions, in-memory repositories, a deterministic Product Analyst, mapped plus free-form clarification, explicit readiness override, secret-redacted append-only audit events, and unit/integration coverage. No provider SDK or runtime dependency was added.
 
-### Slice 2 — Provider-neutral Product Analyst
+### Slice 2 — Planning and architecture approval
 
 **Status: Complete (2026-07-19).**
 
-**User outcome:** An operator may configure a real AI provider for requirement analysis while retaining the same workflow behavior and deterministic fallback tests.
+**User outcome:** A human can review, revise, approve, or reject a structured technical plan produced by a bounded Solution Architect.
 
 Work:
 
-- Define a minimal provider request/response adapter behind `AgentRunner`.
-- Add runtime schema validation and safe parse/retry behavior for structured Product Analyst results.
-- Bound context, time, and retries; redact sensitive audit fields.
-- Keep provider selection in composition/configuration code.
-- Add contract tests reusable by fake and real adapters.
+- Define a versioned Solution Architect assignment/result behind `AgentRunner`.
+- Produce risks, assumptions, dependencies, affected components, test strategy, and rollback considerations.
+- Version revised plans and retain their history.
+- Require audited human approval before implementation may begin.
 
 Acceptance:
 
-- Changing providers does not change domain or application code.
-- Malformed output cannot transition workflow state.
-- Provider failure is recorded and produces a recoverable, explicit workflow outcome.
-- Tests and local development still work with no provider credentials.
+- The architect cannot transition workflow state or approve its own plan.
+- Approval, rejection, and requested changes use validated transitions.
+- Every plan assignment, result, revision, and decision is audited.
 
 Implementation note: the provider-neutral `AgentRunner` now includes a versioned Solution Architect contract and deterministic adapter. Plans are versioned, contain the required risks, assumptions, dependencies, components, test strategy, and rollback considerations, and cannot advance until an explicit audited human approval. Rejection and requested-change paths are deterministic.
 
-### Slice 3 — Architecture proposal
+### Slice 3 — Repository workspace and safe tools
 
-**User outcome:** For ready requirements, the Solution Architect returns a reviewable implementation approach.
+**Status: Complete (2026-07-19).**
 
-Work:
+**User outcome:** Approved local work can inspect the repository and execute bounded validation commands without obtaining external or destructive authority.
 
-- Add the bounded Solution Architect assignment/result contract.
-- Add states and transitions for architecture analysis and human feedback.
-- Produce affected components, interfaces, assumptions, risks, and validation strategy.
-- Permit human rejection or clarification before proceeding.
+Implementation note: a standard-library `RepositoryWorkspace` port and root-confined local adapter provide filtered inspection, changed-file detection, command allowlisting, destructive/external command rejection, timeouts, output limits, secret redaction, and a tool-action audit callback. No remote access, credentials, or runtime dependency was added.
 
 Acceptance:
 
-- The architect receives only approved requirements and bounded repository context.
-- Human feedback is recorded and a revised proposal is traceable.
-- The architect cannot edit code or change workflow state.
+- Repository inspection excludes generated, dependency, and Git-internal content.
+- Only allowlisted local commands execute within the configured workspace root.
+- Destructive and external-write command tokens are denied before execution.
+- Results are time-bounded, size-bounded, redacted, and available to an audit sink.
 
 ### Slice 4 — Workspace-local implementation proposal
 
